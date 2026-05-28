@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0b1220" />
+<title>MicTest — Microphone Passthrough</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='28'%3E%F0%9F%8E%A4%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #0b1220;
+    --bg-2: #111a2e;
+    --card: #18223b;
+    --card-2: #1f2c4d;
+    --line: #2a3a63;
+    --text: #e6ebf5;
+    --muted: #93a0bf;
+    --accent: #4f8cff;
+    --good: #2ecc71;
+    --warn: #f1c40f;
+    --bad: #ff5c5c;
+    --idle: #6b7a99;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100dvh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    background: linear-gradient(180deg, var(--bg-2), var(--bg));
+    border-bottom: 1px solid var(--line);
+    padding: 12px 16px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    display: flex; align-items: center; gap: 12px;
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0.2px; flex: 1; }
+  .header-summary {
+    font-size: 13px; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .status-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    background: var(--idle); box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
+    transition: background 0.3s;
+  }
+  .status-dot.live  { background: var(--good); animation: pulse 1.6s infinite; }
+  .status-dot.error { background: var(--bad); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  main { padding: 14px; max-width: 540px; margin: 0 auto; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px; margin-bottom: 12px;
+    transition: border-color 0.15s;
+  }
+  .card.live { border-color: var(--accent); }
+
+  label.field { display: block; margin-bottom: 14px; }
+  label.field:last-child { margin-bottom: 0; }
+  label.field .lab {
+    display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--muted); margin-bottom: 6px;
+  }
+  select {
+    appearance: none; width: 100%;
+    background: var(--card-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2393a0bf' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 12px center;
+    border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; padding: 10px 32px 10px 12px;
+    font-size: 14px; cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  select:hover { border-color: var(--accent); }
+  select:focus { outline: none; border-color: var(--accent); }
+
+  .actions { display: flex; gap: 8px; }
+  button {
+    appearance: none; border: 1px solid var(--line); background: var(--card);
+    color: var(--text); border-radius: 10px; padding: 11px 16px;
+    font-size: 14px; font-weight: 500; cursor: pointer; flex: 1;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s;
+  }
+  button:hover:not(:disabled) { background: var(--card-2); border-color: var(--accent); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); }
+  button.primary:hover:not(:disabled) { background: #6ba2ff; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .meter-wrap { margin-top: 14px; }
+  .meter-wrap .lab {
+    display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--muted); margin-bottom: 6px;
+  }
+  .meter {
+    height: 10px; background: rgba(255,255,255,0.06);
+    border-radius: 5px; overflow: hidden;
+  }
+  .meter > div {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--good), var(--warn), var(--bad));
+    transition: width 0.06s linear;
+  }
+
+  .hint {
+    color: var(--muted); font-size: 13px; margin: 0;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .warn-box {
+    background: rgba(241,196,15,0.12); border: 1px solid rgba(241,196,15,0.4);
+    color: #ffe06b; border-radius: 10px; padding: 10px 12px;
+    font-size: 13px; line-height: 1.5;
+  }
+  .footer-note {
+    color: var(--muted); font-size: 11px; text-align: center;
+    margin: 24px 0 8px 0; line-height: 1.5;
+  }
+  code {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--card-2); padding: 1px 5px; border-radius: 5px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎤 MicTest — Microphone Passthrough</h1>
+  <span class="header-summary"><span id="dot" class="status-dot"></span><span id="summary">Idle</span></span>
+</header>
+
+<main>
+  <div id="card" class="card">
+    <label class="field">
+      <span class="lab">Input · microphone</span>
+      <select id="input"></select>
+    </label>
+    <label class="field">
+      <span class="lab">Output · headphones / speakers</span>
+      <select id="output"></select>
+    </label>
+
+    <div class="meter-wrap">
+      <span class="lab">Input level</span>
+      <div class="meter"><div id="level"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="actions">
+      <button id="toggle" class="primary">Start</button>
+    </div>
+    <p id="hint" class="hint" style="margin-top:12px">Click Start and grant microphone access.</p>
+  </div>
+
+  <div class="warn-box">⚠ Use headphones. Speaker output will feed back into the mic and create a loud loop.</div>
+
+  <audio id="player" autoplay></audio>
+
+  <div class="footer-note">
+    Runs entirely in your browser · No audio leaves your device.
+  </div>
+</main>
+
+<script>
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+const inputSel = $('input');
+const outputSel = $('output');
+const toggleBtn = $('toggle');
+const hint = $('hint');
+const dot = $('dot');
+const summary = $('summary');
+const card = $('card');
+const player = $('player');
+const level = $('level');
+
+let stream = null;
+let audioCtx = null;
+let analyser = null;
+let rafId = null;
+
+function setStatus(state, msg) {
+  dot.className = 'status-dot ' + state;
+  summary.textContent = msg;
+  card.classList.toggle('live', state === 'live');
+}
+
+async function listDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const keepIn = inputSel.value, keepOut = outputSel.value;
+  inputSel.innerHTML = '';
+  outputSel.innerHTML = '';
+  devices.forEach(d => {
+    if (d.kind === 'audioinput') {
+      inputSel.add(new Option(d.label || `Microphone ${inputSel.length + 1}`, d.deviceId));
+    } else if (d.kind === 'audiooutput') {
+      outputSel.add(new Option(d.label || `Output ${outputSel.length + 1}`, d.deviceId));
+    }
+  });
+  if (keepIn) inputSel.value = keepIn;
+  if (keepOut) outputSel.value = keepOut;
+}
+
+function startMeter() {
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const src = audioCtx.createMediaStreamSource(stream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  src.connect(analyser);
+  const data = new Uint8Array(analyser.fftSize);
+  const tick = () => {
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (const v of data) { const x = (v - 128) / 128; sum += x * x; }
+    const rms = Math.sqrt(sum / data.length);
+    level.style.width = Math.min(100, rms * 220).toFixed(1) + '%';
+    rafId = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function stopMeter() {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = null;
+  level.style.width = '0%';
+}
+
+async function start() {
+  try {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    setStatus('', 'Connecting…');
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: inputSel.value ? { exact: inputSel.value } : undefined,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+
+    player.srcObject = stream;
+
+    if (typeof player.setSinkId === 'function' && outputSel.value) {
+      try { await player.setSinkId(outputSel.value); }
+      catch (e) { console.warn('setSinkId failed:', e); }
+    }
+
+    await player.play();
+    await listDevices();
+    startMeter();
+
+    setStatus('live', 'Live');
+    hint.textContent = 'You should hear your mic. Switching devices re-routes instantly.';
+    toggleBtn.textContent = 'Stop';
+  } catch (e) {
+    console.error(e);
+    setStatus('error', 'Error');
+    hint.textContent = 'Could not start: ' + e.message;
+  }
+}
+
+function stop() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  player.srcObject = null;
+  stopMeter();
+  setStatus('', 'Stopped');
+  hint.textContent = 'Stopped. Click Start to resume.';
+  toggleBtn.textContent = 'Start';
+}
+
+toggleBtn.addEventListener('click', () => stream ? stop() : start());
+inputSel.addEventListener('change', () => { if (stream) start(); });
+outputSel.addEventListener('change', () => {
+  if (stream && typeof player.setSinkId === 'function' && outputSel.value) {
+    player.setSinkId(outputSel.value).catch(e => console.warn(e));
+  }
+});
+
+navigator.mediaDevices.addEventListener('devicechange', listDevices);
+listDevices();
+</script>
+
+</body>
+</html>
