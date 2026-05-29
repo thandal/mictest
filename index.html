@@ -284,7 +284,25 @@ outputSel.addEventListener('change', () => {
 });
 
 navigator.mediaDevices.addEventListener('devicechange', listDevices);
-listDevices();
+
+// Request mic permission up front so the device lists populate with real
+// labels immediately — otherwise enumerateDevices() returns empty/unlabeled
+// entries until permission is granted, making the selectors look broken.
+async function init() {
+  try {
+    const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // We only needed the permission grant; release the probe stream right away.
+    probe.getTracks().forEach(t => t.stop());
+    await listDevices();
+    hint.textContent = 'Select your input and output, then click Start.';
+  } catch (e) {
+    console.warn('Permission probe failed:', e);
+    await listDevices();
+    hint.textContent = 'Grant microphone access to choose devices, then click Start.';
+  }
+}
+
+init();
 </script>
 
 </body>
